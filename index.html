@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KMA Business Dashboard</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--navy:#111827;--deep:#061a44;--red:#c1121f;--red2:#ef4444;--bg:#f8fafc;--ink:#1f2937;--muted:#6b7280;--line:#e5e7eb}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",sans-serif;background:radial-gradient(circle at top left,#fff1f2 0,#f8fafc 38%,#e9eef8 100%);min-height:100vh;color:var(--ink)}
+.wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+.card{width:min(94vw,620px);background:white;border:1px solid var(--line);border-radius:28px;padding:34px;box-shadow:0 22px 60px rgba(17,24,39,.18);border-top:7px solid var(--red)}
+.logo{text-align:center;margin-bottom:12px}
+.logo img{width:min(300px,78vw);height:auto;display:inline-block}
+h1{font-size:28px;text-align:center;color:var(--navy);font-weight:900;letter-spacing:-.5px;margin:10px 0 6px}
+.sub{text-align:center;color:var(--muted);font-size:14px;font-weight:700;margin-bottom:26px}
+.login{margin-top:22px;display:grid;gap:10px}
+.login input{height:48px;border:1px solid #d1d5db;border-radius:14px;padding:0 14px;font-size:16px;outline:none}
+.login input:focus{border-color:var(--red);box-shadow:0 0 0 3px rgba(193,18,31,.14)}
+.btn{border:none;border-radius:14px;height:50px;background:linear-gradient(135deg,var(--red),#7f1d1d);color:#fff;font-weight:900;font-size:15px;cursor:pointer;transition:.18s;text-decoration:none;display:flex;align-items:center;justify-content:center}
+.btn:hover{background:linear-gradient(135deg,#ef4444,var(--red));color:#fff;transform:translateY(-1px)}
+.menu{display:none;grid-template-columns:1fr;gap:12px;margin-top:24px}
+.menu .item{padding:18px 16px;border-radius:18px;background:#fff;border:1px solid #dbe3f0;text-decoration:none;color:var(--ink);box-shadow:0 4px 14px rgba(31,41,55,.05)}
+.menu .item b{display:block;color:#111827;font-size:17px;margin-bottom:5px}
+.menu .item span{font-size:12px;color:var(--muted);line-height:1.45}
+.menu .item:hover{border-color:var(--red);background:#fff7f7}
+.msg{min-height:18px;color:#d93025;font-size:12px;font-weight:800;text-align:center}
+.foot{margin-top:22px;text-align:center;font-size:12px;color:#9ca3af;font-weight:700}
+@media(max-width:480px){.card{padding:24px 18px;border-radius:22px}h1{font-size:22px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="logo"><img src="logo.png" alt="KMA"></div>
+    <h1>KMA Business Dashboard</h1>
+    <div class="sub">방문·주문 분석 · 출고·정산 KPI</div>
+
+    <div id="loginBox" class="login">
+      <input type="password" id="pw" placeholder="비밀번호 입력" autocomplete="current-password">
+      <button class="btn" onclick="login()">접속</button>
+      <div id="msg" class="msg"></div>
+    </div>
+
+    <div id="menu" class="menu">
+      <a class="item" href="./visitor_order_dashboard.html">
+        <b>방문·주문 분석 대시보드</b>
+        <span>주문일시 기준으로 방문자, 관심고객, 주문, 전환율, 상품성과를 분석합니다.</span>
+      </a>
+      <a class="item" href="./kpi_settlement_dashboard.html">
+        <b>출고·정산 KPI 대시보드</b>
+        <span>발송일 기준으로 매출수익, 쇼핑몰수수료, 원가, 배송비, 광고비, 순이익을 분석합니다.</span>
+      </a>
+    </div>
+
+    <div class="foot">© KMA</div>
+  </div>
+</div>
+<script>
+const DASHBOARD_PASSWORD='1212';
+function openMenu(){
+  document.getElementById('loginBox').style.display='none';
+  document.getElementById('menu').style.display='grid';
+}
+function login(){
+  const pw=document.getElementById('pw');
+  const msg=document.getElementById('msg');
+  if(String(pw.value)===DASHBOARD_PASSWORD){
+    sessionStorage.setItem('kma_dashboard_login','ok');
+    openMenu();
+  }else{
+    msg.textContent='비밀번호가 맞지 않습니다.';
+    pw.value='';
+    pw.focus();
+  }
+}
+document.getElementById('pw').addEventListener('keydown',e=>{if(e.key==='Enter')login();});
+if(sessionStorage.getItem('kma_dashboard_login')==='ok')openMenu();
+</script>
+</body>
+</html>
