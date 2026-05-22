@@ -57,56 +57,14 @@ h1{font-size:28px;text-align:center;color:var(--navy);font-weight:900;letter-spa
   </div>
 </div>
 <script>
-const API_URL='https://script.google.com/macros/s/AKfycbxJfkSyDbdmAjfEqvkLSZCkMGIZT934rL--0b4fa5Vji4D8WWk51N6MuagB7juecIm4GA/exec';
-
-function openMenu(){
-  document.getElementById('loginBox').style.display='none';
-  document.getElementById('menu').style.display='grid';
-}
-function apiUrl(params){
-  const q=new URLSearchParams(params);
-  q.set('_',Date.now());
-  return API_URL+'?'+q.toString();
-}
-async function apiGet(params){
-  const res=await fetch(apiUrl(params),{method:'GET',cache:'no-store'});
-  if(!res.ok)throw new Error('API 응답 오류: '+res.status);
-  return await res.json();
-}
-async function login(){
-  const pw=document.getElementById('pw');
-  const msg=document.getElementById('msg');
-  msg.textContent='확인 중...';
-  try{
-    const j=await apiGet({action:'login',password:pw.value});
-    if(j && j.ok && j.token){
-      sessionStorage.setItem('kma_api_token',j.token);
-      sessionStorage.setItem('kma_dashboard_login','ok');
-      msg.textContent='';
-      openMenu();
-    }else{
-      msg.textContent=(j&&j.message)||'비밀번호가 맞지 않습니다.';
-      pw.value='';
-      pw.focus();
-    }
-  }catch(e){
-    msg.textContent='로그인 API 연결 실패: '+e.message;
-  }
-}
-async function checkLogin(){
-  const token=sessionStorage.getItem('kma_api_token')||'';
-  if(!token)return;
-  try{
-    const j=await apiGet({action:'ping',token});
-    if(j && j.ok)openMenu();
-    else{
-      sessionStorage.removeItem('kma_api_token');
-      sessionStorage.removeItem('kma_dashboard_login');
-    }
-  }catch(e){}
-}
+const API_URL = 'https://script.google.com/macros/s/AKfycbxJfkSyDbdmAjfEqvkLSZCkMGIZT934rL--0b4fa5Vji4D8WWk51N6MuagB7juecIm4GA/exec';
+const CLIENT_CODE = 'KMA_20260522_A';
+function apiUrl(params){const q=new URLSearchParams({...params,clientCode:CLIENT_CODE});return API_URL+'?'+q.toString();}
+function apiJsonp(params){return new Promise((resolve,reject)=>{const cb='__kma_api_cb_'+Date.now()+'_'+Math.random().toString(36).slice(2);const script=document.createElement('script');let done=false;const timer=setTimeout(()=>{if(done)return;cleanup();reject(new Error('API 응답 시간 초과'));},30000);function cleanup(){done=true;clearTimeout(timer);try{delete window[cb];}catch(e){window[cb]=undefined;}if(script.parentNode)script.parentNode.removeChild(script);}window[cb]=function(data){cleanup();resolve(data);};script.onerror=function(){cleanup();reject(new Error('API 스크립트 로드 실패'));};script.src=apiUrl({...params,callback:cb,rand:Date.now()});document.head.appendChild(script);});}
+function openMenu(){document.getElementById('loginBox').style.display='none';document.getElementById('menu').style.display='grid';}
+async function login(){const pw=document.getElementById('pw');const msg=document.getElementById('msg');msg.textContent='로그인 확인 중...';try{const data=await apiJsonp({action:'login',password:String(pw.value||'')});if(data&&data.ok){sessionStorage.setItem('kma_dashboard_login','ok');sessionStorage.setItem('kma_api_token',data.token);msg.textContent='';openMenu();}else{msg.textContent=(data&&data.message)||'로그인 실패';pw.value='';pw.focus();}}catch(e){msg.textContent='로그인 API 연결 실패: '+e.message;}}
 document.getElementById('pw').addEventListener('keydown',e=>{if(e.key==='Enter')login();});
-checkLogin();
+if(sessionStorage.getItem('kma_dashboard_login')==='ok'&&sessionStorage.getItem('kma_api_token'))openMenu();
 </script>
 </body>
 </html>
