@@ -57,25 +57,56 @@ h1{font-size:28px;text-align:center;color:var(--navy);font-weight:900;letter-spa
   </div>
 </div>
 <script>
-const DASHBOARD_PASSWORD='1212';
+const API_URL='https://script.google.com/macros/s/AKfycbxJfkSyDbdmAjfEqvkLSZCkMGIZT934rL--0b4fa5Vji4D8WWk51N6MuagB7juecIm4GA/exec';
+
 function openMenu(){
   document.getElementById('loginBox').style.display='none';
   document.getElementById('menu').style.display='grid';
 }
-function login(){
+function apiUrl(params){
+  const q=new URLSearchParams(params);
+  q.set('_',Date.now());
+  return API_URL+'?'+q.toString();
+}
+async function apiGet(params){
+  const res=await fetch(apiUrl(params),{method:'GET',cache:'no-store'});
+  if(!res.ok)throw new Error('API 응답 오류: '+res.status);
+  return await res.json();
+}
+async function login(){
   const pw=document.getElementById('pw');
   const msg=document.getElementById('msg');
-  if(String(pw.value)===DASHBOARD_PASSWORD){
-    sessionStorage.setItem('kma_dashboard_login','ok');
-    openMenu();
-  }else{
-    msg.textContent='비밀번호가 맞지 않습니다.';
-    pw.value='';
-    pw.focus();
+  msg.textContent='확인 중...';
+  try{
+    const j=await apiGet({action:'login',password:pw.value});
+    if(j && j.ok && j.token){
+      sessionStorage.setItem('kma_api_token',j.token);
+      sessionStorage.setItem('kma_dashboard_login','ok');
+      msg.textContent='';
+      openMenu();
+    }else{
+      msg.textContent=(j&&j.message)||'비밀번호가 맞지 않습니다.';
+      pw.value='';
+      pw.focus();
+    }
+  }catch(e){
+    msg.textContent='로그인 API 연결 실패: '+e.message;
   }
 }
+async function checkLogin(){
+  const token=sessionStorage.getItem('kma_api_token')||'';
+  if(!token)return;
+  try{
+    const j=await apiGet({action:'ping',token});
+    if(j && j.ok)openMenu();
+    else{
+      sessionStorage.removeItem('kma_api_token');
+      sessionStorage.removeItem('kma_dashboard_login');
+    }
+  }catch(e){}
+}
 document.getElementById('pw').addEventListener('keydown',e=>{if(e.key==='Enter')login();});
-if(sessionStorage.getItem('kma_dashboard_login')==='ok')openMenu();
+checkLogin();
 </script>
 </body>
 </html>
