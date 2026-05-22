@@ -58,24 +58,56 @@ h1{font-size:28px;text-align:center;color:var(--navy);font-weight:900;letter-spa
 </div>
 <script>
 const DASHBOARD_PASSWORD='1212';
+const VERSION_API_URL='https://script.google.com/macros/s/AKfycbxJfkSyDbdmAjfEqvkLSZCkMGIZT934rL--0b4fa5Vji4D8WWk51N6MuagB7juecIm4GA/exec';
+const CLIENT_CODE='KMA_20260522_A';
+
+function jsonp(url, params={}, timeoutMs=12000){
+  return new Promise((resolve,reject)=>{
+    const cb='__kma_v_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+    const q=new URLSearchParams(params);
+    q.set('callback', cb);
+    const s=document.createElement('script');
+    let done=false;
+    const timer=setTimeout(()=>{ if(done)return; cleanup(); reject(new Error('버전 확인 시간 초과')); }, timeoutMs);
+    function cleanup(){ done=true; clearTimeout(timer); try{delete window[cb];}catch(e){window[cb]=undefined;} if(s.parentNode)s.parentNode.removeChild(s); }
+    window[cb]=function(data){ cleanup(); resolve(data); };
+    s.onerror=function(){ cleanup(); reject(new Error('버전 확인 실패')); };
+    s.src=url+(url.includes('?')?'&':'?')+q.toString()+'&_='+Date.now();
+    document.head.appendChild(s);
+  });
+}
+async function checkVersion(){
+  const res=await jsonp(VERSION_API_URL, {action:'version', clientCode:CLIENT_CODE});
+  if(!res || res.ok!==true) throw new Error((res&&res.message)||'대시보드 버전이 만료되었습니다.');
+  return true;
+}
 function openMenu(){
   document.getElementById('loginBox').style.display='none';
   document.getElementById('menu').style.display='grid';
 }
-function login(){
+async function login(){
   const pw=document.getElementById('pw');
   const msg=document.getElementById('msg');
-  if(String(pw.value)===DASHBOARD_PASSWORD){
-    sessionStorage.setItem('kma_dashboard_login','ok');
-    openMenu();
-  }else{
+  msg.textContent='';
+  if(String(pw.value)!==DASHBOARD_PASSWORD){
     msg.textContent='비밀번호가 맞지 않습니다.';
-    pw.value='';
-    pw.focus();
+    pw.value=''; pw.focus(); return;
+  }
+  try{
+    msg.textContent='버전 확인 중...';
+    await checkVersion();
+    sessionStorage.setItem('kma_dashboard_login','ok');
+    localStorage.setItem('kma_dashboard_login','ok');
+    sessionStorage.setItem('kma_dashboard_code',CLIENT_CODE);
+    localStorage.setItem('kma_dashboard_code',CLIENT_CODE);
+    msg.textContent='';
+    openMenu();
+  }catch(e){
+    msg.textContent=e.message || '버전 확인 실패';
   }
 }
 document.getElementById('pw').addEventListener('keydown',e=>{if(e.key==='Enter')login();});
-if(sessionStorage.getItem('kma_dashboard_login')==='ok')openMenu();
+if((sessionStorage.getItem('kma_dashboard_login')==='ok'||localStorage.getItem('kma_dashboard_login')==='ok') && (sessionStorage.getItem('kma_dashboard_code')===CLIENT_CODE||localStorage.getItem('kma_dashboard_code')===CLIENT_CODE)) openMenu();
 </script>
 </body>
 </html>
