@@ -83,7 +83,8 @@ function cellText(cell){
   return '';
 }
 async function getServerCode(){
-  const url=`https://docs.google.com/spreadsheets/d/${SHEET_SALES}/gviz/tq?sheet=${encodeURIComponent(SHEET_SETTING)}`;
+  // 설정 시트는 A1=APP_CODE, B1=버전값 구조를 그대로 읽어야 하므로 headers=0으로 호출합니다.
+  const url=`https://docs.google.com/spreadsheets/d/${SHEET_SALES}/gviz/tq?sheet=${encodeURIComponent(SHEET_SETTING)}&headers=0`;
   const j=await gvizJsonp(url);
   if(!j || j.status==='error') throw new Error('버전 확인 실패');
   const rows=(j.table&&j.table.rows)||[];
@@ -91,7 +92,7 @@ async function getServerCode(){
     const c=row.c||[];
     const key=cellText(c[0]);
     const val=cellText(c[1]);
-    if(key==='APP_CODE') return val;
+    if(String(key).trim().toUpperCase()==='APP_CODE') return String(val).trim();
   }
   throw new Error('설정 시트 APP_CODE 없음');
 }
