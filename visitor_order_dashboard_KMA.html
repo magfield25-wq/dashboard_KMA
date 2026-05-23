@@ -363,6 +363,7 @@ body.locked .header,body.locked .container{filter:blur(2px);pointer-events:none;
     <div class="chart-box" style="margin-bottom:16px;"><div class="box-head"><div class="chart-title">일별 방문자 · 주문 · 매출 추이</div><div class="hint">방문자/매출은 좌측, 주문건수는 우측 축</div></div><div class="chart lg"><canvas id="monthlyTrendChart"></canvas></div></div>
     <div class="chart-box" style="margin-bottom:16px;"><div class="box-head"><div class="chart-title">비교기간 일별 방문자 · 주문 · 매출 추이</div><div class="hint" id="prevMonthHint">선택 기간과 같은 일수 기준 / 방문자·매출은 좌측, 주문건수는 우측 축</div></div><div class="chart lg"><canvas id="prevMonthTrendChart"></canvas></div></div>
     <div class="chart-box" style="margin-bottom:16px;"><div class="box-head"><div class="chart-title">월말 예상 달성판</div><div class="hint">단순 일평균 기준</div></div><div class="chart"><canvas id="forecastChart"></canvas></div></div>
+    <div class="table-box" style="margin-bottom:16px;"><div class="box-head"><div class="chart-title">선택기간 일별 방문자 · 주문 · 매출표</div><div class="hint">현재 선택기간만 표시 / 전환율·객단가 포함 / Total 포함</div></div><div style="overflow-x:auto;"><table id="summaryDailyTable"></table></div></div>
   </div>
   <div id="conversion" class="panel">
 
@@ -538,7 +539,8 @@ body.locked .header,body.locked .container{filter:blur(2px);pointer-events:none;
       <div class="chart-box"><div class="box-head"><div class="chart-title">구매금액 분포</div><div class="hint">고객별 누적 구매금액 구간</div></div><div class="chart dist-mobile"><canvas id="customerAmountDistChart"></canvas></div></div>
       <div class="chart-box"><div class="box-head"><div class="chart-title">재구매 분포</div><div class="hint">고객별 주문횟수 구간</div></div><div class="chart dist-mobile"><canvas id="customerRepeatDistChart"></canvas></div></div>
     </div>
-    <div class="table-box"><div class="box-head"><div class="chart-title">충성고객 후보</div><div class="hint">구매자명/구매자ID/수취인 컬럼이 있을 때 표시</div></div><div class="customer-sort"><button id="sortOrdersBtn" class="active" onclick="setCustomerSort('orders')">주문횟수순</button><button id="sortRevenueBtn" onclick="setCustomerSort('revenue')">구매금액순</button></div><table id="customerTable"></table></div>
+    <div class="table-box" style="margin-bottom:14px;"><div class="box-head"><div class="chart-title">개인/사업자 매출 추정</div><div class="hint">사업자등록번호/상호/회사명/수취인명/주소/메모 키워드 기반 추정</div></div><table id="customerTypeSummaryTable"></table></div>
+    <div class="table-box"><div class="box-head"><div class="chart-title">고객 리스트</div><div class="hint">전체 고객 표시 / 고객명·근거정보 마스킹 / 개인·사업자 추정 플래그 포함</div></div><div class="customer-sort"><button id="sortOrdersBtn" class="active" onclick="setCustomerSort('orders')">주문횟수순</button><button id="sortRevenueBtn" onclick="setCustomerSort('revenue')">구매금액순</button></div><div style="overflow-x:auto;"><table id="customerTable"></table></div></div>
   </div>
 </div>
 <script>
@@ -779,6 +781,23 @@ function buildInterest(start,end,visitStores){const byStore={},dailyStore={};raw
 function daysBetween(start,end){const a=parseDate(start),b=parseDate(end);return Math.max(1,Math.round((b-a)/86400000)+1);}
 function elapsedDaysInRange(start,end){const today=ymd(new Date());const realEnd=today<end?today:end;return daysBetween(start,realEnd);}
 function forecast(total,start,end){const elapsed=elapsedDaysInRange(start,end),totalDays=daysBetween(start,end);return elapsed?total/elapsed*totalDays:0;}
+function renderSummaryDailyTable(dates,visit,sales){
+  const rows=dates.filter(d=>d<=ymd(new Date())).map(d=>{const v=visit.dailyMap[d]||0,o=sales.dailyMap[d]?.orders||0,r=sales.dailyMap[d]?.rev||0;return [d,Math.round(v),o,Math.round(r),v?o/v:NaN,o?r/o:0];});
+  const tv=rows.reduce((a,r)=>a+(Number(r[1])||0),0),to=rows.reduce((a,r)=>a+(Number(r[2])||0),0),tr=rows.reduce((a,r)=>a+(Number(r[3])||0),0);
+  rows.push(['Total',tv,to,tr,tv?to/tv:NaN,to?tr/to:0]);
+  const html='<tr><th>일자</th><th>방문자</th><th>주문건수</th><th>매출</th><th>전환율</th><th>객단가</th></tr>'+rows.map((r,i)=>`<tr class="${i===rows.length-1?'total-row':''}"><td>${r[0]}</td><td>${Number(r[1]||0).toLocaleString()}</td><td>${Number(r[2]||0).toLocaleString()}</td><td>${money(r[3])}</td><td>${Number.isFinite(r[4])?(r[4]*100).toFixed(1)+'%':'-'}</td><td>${money(r[5])}</td></tr>`).join('');
+  const el=document.getElementById('summaryDailyTable'); if(el)el.innerHTML=html;
+}
+function maskName(v){const s=String(v||'').trim(); if(!s)return ''; if(s.length<=1)return '*'; if(s.length===2)return s[0]+'*'; return s[0]+'*'.repeat(Math.max(1,s.length-2))+s.slice(-1);}
+function maskInfo(v){const s=String(v||'').trim(); if(!s)return ''; return s.replace(/[0-9]/g,'*').replace(/[가-힣A-Za-z]{2,}/g,m=>m[0]+'*'.repeat(Math.min(4,m.length-1)));}
+function firstNonEmpty(row,names){for(const n of names){const v=row[n]; if(v!==undefined&&v!==null&&String(v).trim())return String(v).trim();} return '';}
+function classifyCustomerRows(rows){
+  const bizNoNames=['사업자등록번호','사업자 번호','사업자번호','사업자'], companyNames=['회사명','상호','상호명','업체명','사업장명','법인명'], recipientNames=['수취인명','수령인','받는분','배송자이름','주문자명','구매자명'], addrNames=['주소','배송지','배송주소','수취인주소','기본배송지','상세주소'], memoNames=['배송메모','메모','주문메모','요청사항'];
+  const bizKeywords=['주식회사','(주)','㈜','회사','상사','산업','공업','기업','법인','센터','연구소','학교','대학교','병원','의원','공장','협회','조합','재단','관공서','군청','시청','구청','교육청','사업자','세금계산서','견적','발주','납품','담당자','부서','팀','사무실','매장','본사','지점','물류','창고'];
+  let score=0,reasons=[]; rows.forEach(r=>{const bizNo=firstNonEmpty(r,bizNoNames),comp=firstNonEmpty(r,companyNames),rec=firstNonEmpty(r,recipientNames),addr=firstNonEmpty(r,addrNames),memo=firstNonEmpty(r,memoNames); if(/\d{3}[-\s]?\d{2}[-\s]?\d{5}/.test(bizNo)){score+=5;reasons.push('사업자등록번호 형식');} if(comp){score+=3;reasons.push('상호/회사명');} const joined=[rec,addr,memo,comp].join(' '); bizKeywords.forEach(k=>{if(joined.includes(k)){score+=1;reasons.push(k);}});});
+  reasons=[...new Set(reasons)].slice(0,4); return {type:score>=3?'사업자 추정':'개인 추정',reason:reasons.length?reasons.join(', '):'사업자성 키워드 없음',masked:maskInfo(rows.map(r=>firstNonEmpty(r,['회사명','상호','상호명','수취인명','수령인','배송지','주소','메모','배송메모'])).filter(Boolean).slice(0,2).join(' / '))};
+}
+
 
 function ymdToDateSafe(s){
   const p=String(s||'').split('-').map(Number);
@@ -910,7 +929,7 @@ function refreshCore(){
     {label:'주문건수',type:'bar',data:dailyOrders,backgroundColor:'rgba(24,128,56,.72)',borderColor:'#188038',borderWidth:1,yAxisID:'y1',order:1},
     {label:'방문자',type:'line',data:dailyVisits,borderColor:'#c1121f',backgroundColor:'rgba(26,115,232,.08)',borderWidth:3,pointRadius:3,tension:.25,yAxisID:'y',order:2},
     {label:'매출(만원)',type:'line',data:dailyRev,borderColor:'#d93025',backgroundColor:'rgba(217,48,37,.08)',borderWidth:2,borderDash:[6,4],pointRadius:2,tension:.25,yAxisID:'y',order:3}
-  ],true,{yMax:commonYMax,y1Max:commonY1Max});
+  ],true,{yMax:commonYMax,y1Max:commonY1Max,datalabels:{display:(ctx)=>ctx.dataset.data[ctx.dataIndex]!==null,anchor:'end',align:'top',offset:2,formatter:v=>Number(v).toLocaleString(),font:{weight:'700',size:10},color:'#202124'}});
 
   const prevHint=document.getElementById('prevMonthHint');
   if(prevHint && prevDates.length){
@@ -920,7 +939,7 @@ function refreshCore(){
     {label:compare.label+' 주문건수',type:'bar',data:prevDailyOrders,backgroundColor:'rgba(24,128,56,.72)',borderColor:'#188038',borderWidth:1,yAxisID:'y1',order:1},
     {label:compare.label+' 방문자',type:'line',data:prevDailyVisits,borderColor:'#c1121f',backgroundColor:'rgba(26,115,232,.08)',borderWidth:3,pointRadius:3,tension:.25,yAxisID:'y',order:2},
     {label:compare.label+' 매출(만원)',type:'line',data:prevDailyRev,borderColor:'#d93025',backgroundColor:'rgba(217,48,37,.08)',borderWidth:2,borderDash:[6,4],pointRadius:2,tension:.25,yAxisID:'y',order:3}
-  ],true,{yMax:commonYMax,y1Max:commonY1Max});
+  ],true,{yMax:commonYMax,y1Max:commonY1Max,datalabels:{display:(ctx)=>ctx.dataset.data[ctx.dataIndex]!==null,anchor:'end',align:'top',offset:2,formatter:v=>Number(v).toLocaleString(),font:{weight:'700',size:10},color:'#202124'}});
   draw('forecastChart','bar',['방문자','주문','매출(만원)'],[
     {label:'현재',data:[visitTotal,orderTotal,Math.round(revTotal/10000)],backgroundColor:'#9aa0a6'},
     {label:'월말예상',data:[Math.round(fVisit),Math.round(fOrders),Math.round(fRev/10000)],backgroundColor:'#c1121f'}
@@ -935,6 +954,7 @@ function refreshCore(){
       color:'#202124'
     }
   });
+  renderSummaryDailyTable(dates,visit,sales);
   renderConversion(visit,sales);renderCompetitor(start,end);renderHistory(dates,dailyVisits,dailyOrders,dailyRev,visit,sales);renderProduct(sales);renderCustomer(sales);
   renderFranchise(start,end);
   document.getElementById('status').textContent=`분석 완료: ${sel.label} / ${start} ~ ${end}`;
@@ -984,7 +1004,7 @@ function renderHourConversionDistribution(hVisit,hOrders,hRevMan){
   draw('hourConversionDistChart','bar',labels,[
     {label:'전환율(%)',type:'bar',data:conv,backgroundColor:'rgba(26,115,232,.72)',borderColor:'#c1121f',borderWidth:1,yAxisID:'y',order:1},
     {label:'매출(만원)',type:'line',data:hRevMan,borderColor:'#d93025',backgroundColor:'rgba(217,48,37,.08)',borderWidth:3,pointRadius:2,tension:.25,yAxisID:'y1',order:2}
-  ],true,{yTitle:'전환율 %',y1Title:'매출(만원)',datalabels:{display:(ctx)=>ctx.dataset.label==='전환율(%)'&&ctx.dataset.data[ctx.dataIndex]>0,anchor:'end',align:'top',formatter:v=>Number(v).toFixed(1)+'%',font:{weight:'700',size:10},color:'#202124'}});
+  ],true,{yTitle:'전환율 %',y1Title:'매출(만원)',datalabels:{display:(ctx)=>ctx.dataset.data[ctx.dataIndex]>0,anchor:'end',align:'top',formatter:(v,ctx)=>ctx.dataset.label==='전환율(%)'?Number(v).toFixed(1)+'%':Number(v).toLocaleString(),font:{weight:'700',size:10},color:'#202124'}});
 }
 function customerBucketsFromSales(sales){
   const candidates=['구매자명','구매자ID','구매자 아이디','수취인명','수령인','주문자명'];
@@ -1012,8 +1032,8 @@ function customerBucketsFromSales(sales){
 }
 function renderCustomerDistributions(sales){
   const b=customerBucketsFromSales(sales);
-  draw('customerAmountDistChart','bar',b.amountLabels,[{label:'고객 수',data:b.amountData,backgroundColor:'rgba(26,115,232,.75)',borderColor:'#c1121f',borderWidth:1}],false,{datalabels:{display:true,anchor:'end',align:'top',formatter:v=>Number(v).toLocaleString(),font:{weight:'700',size:10},color:'#202124'}});
-  draw('customerRepeatDistChart','doughnut',b.repeatLabels,[{label:'고객 수',data:b.repeatData}],true,{datalabels:{display:true,formatter:(v,ctx)=>v?ctx.chart.data.labels[ctx.dataIndex]+'\n'+v.toLocaleString():'' ,font:{weight:'700',size:10},color:'#202124'}});
+  draw('customerAmountDistChart','bar',b.amountLabels,[{label:'고객 수',data:b.amountData,backgroundColor:'rgba(26,115,232,.75)',borderColor:'#c1121f',borderWidth:1}],false,{datalabels:{display:true,anchor:'end',align:'top',formatter:(v,ctx)=>{const total=ctx.dataset.data.reduce((a,b)=>a+(Number(b)||0),0);return total?Number(v).toLocaleString()+'\n'+(v/total*100).toFixed(1)+'%':Number(v).toLocaleString();},font:{weight:'700',size:10},color:'#202124'}});
+  draw('customerRepeatDistChart','doughnut',b.repeatLabels,[{label:'고객 수',data:b.repeatData}],true,{datalabels:{display:true,formatter:(v,ctx)=>{const total=ctx.dataset.data.reduce((a,b)=>a+(Number(b)||0),0);return v?ctx.chart.data.labels[ctx.dataIndex]+'\n'+v.toLocaleString()+' ('+(v/total*100).toFixed(1)+'%)':''},font:{weight:'700',size:10},color:'#202124'}});
 }
 
 function renderConversion(visit,sales){
@@ -1031,7 +1051,7 @@ function renderConversion(visit,sales){
     {label:'방문자',type:'line',data:hVisit,borderColor:'#c1121f',backgroundColor:'rgba(26,115,232,.08)',borderWidth:3,pointRadius:2,tension:.25,yAxisID:'y',order:2},
     {label:'주문건수',type:'bar',data:hOrders,backgroundColor:'rgba(24,128,56,.75)',borderColor:'#188038',borderWidth:1,yAxisID:'y1',order:1},
     {label:'매출(만원)',type:'line',data:hRevMan,borderColor:'#d93025',backgroundColor:'rgba(217,48,37,.08)',borderWidth:2,borderDash:[6,4],pointRadius:2,tension:.25,yAxisID:'y',order:3}
-  ],true,{yTitle:'방문자 / 매출(만원)',y1Title:'주문건수'});
+  ],true,{yTitle:'방문자 / 매출(만원)',y1Title:'주문건수',datalabels:{display:true,anchor:'end',align:'top',offset:2,formatter:v=>Number(v).toLocaleString(),font:{weight:'700',size:10},color:'#202124'}});
 
   const dowVisit=Array(7).fill(0);
   const dowOrders=Array(7).fill(0);
@@ -1050,11 +1070,11 @@ function renderConversion(visit,sales){
     {label:'매출(만원)',type:'line',data:dowRevMan,borderColor:'#d93025',backgroundColor:'rgba(217,48,37,.08)',borderWidth:3,borderDash:[6,4],pointRadius:3,tension:.25,yAxisID:'y1'}
   ],true,{yTitle:'전환율 %',y1Title:'매출(만원)',
     datalabels:{
-      display:function(ctx){return ctx.dataset.label==='전환율(%)';},
+      display:true,
       anchor:'end',
       align:'top',
       offset:2,
-      formatter:v=>Number(v).toFixed(1)+'%',
+      formatter:(v,ctx)=>ctx.dataset.label==='전환율(%)'?Number(v).toFixed(1)+'%':Number(v).toLocaleString(),
       font:{weight:'700',size:11},
       color:'#202124'
     }
@@ -1084,7 +1104,7 @@ function renderConversion(visit,sales){
       {label:'방문자',type:'line',data:x.vByHour,borderColor:'#c1121f',backgroundColor:'rgba(26,115,232,.08)',borderWidth:2,pointRadius:1,tension:.25,yAxisID:'y',order:2},
       {label:'주문건수',type:'bar',data:x.oByHour,backgroundColor:'rgba(24,128,56,.72)',borderColor:'#188038',borderWidth:1,yAxisID:'y1',order:1},
       {label:'매출(만원)',type:'line',data:x.rByHourMan,borderColor:'#d93025',backgroundColor:'rgba(217,48,37,.08)',borderWidth:2,borderDash:[6,4],pointRadius:1,tension:.25,yAxisID:'y',order:3}
-    ],true,{yTitle:'방문 / 매출(만원)',y1Title:'주문',yMax:commonDowY,y1Max:commonDowY1});
+    ],true,{yTitle:'방문 / 매출(만원)',y1Title:'주문',yMax:commonDowY,y1Max:commonDowY1,datalabels:{display:true,anchor:'end',align:'top',offset:2,formatter:v=>Number(v).toLocaleString(),font:{weight:'700',size:9},color:'#202124'}});
   }
 
   const weak=hours.map((h,i)=>({
@@ -1324,7 +1344,7 @@ function renderSelectedCompetitorViews(){
   const hourLabels=Array.from({length:24},(_,i)=>String(i).padStart(2,'0')+'시');
   const hourSets=[lineDs('All Average',series(compState.allHourAvg),'#000000',4)];
   selected.forEach((s,i)=>hourSets.push(lineDs(s,series(compState.hourCumAvgByStore[s]),compColor(i),3)));
-  draw('selectedStoreHourChart','line',hourLabels,hourSets,true,{yTitle:'누적평균 방문자'});
+  draw('selectedStoreHourChart','line',hourLabels,hourSets,true,{yTitle:'누적평균 방문자',datalabels:{display:(ctx)=>ctx.dataset.data[ctx.dataIndex]!==null,anchor:'end',align:'top',offset:2,formatter:v=>Number(v).toLocaleString(),font:{weight:'700',size:9},color:'#202124'}});
 
   const incSeries=(arr)=>{
     let prev=null;
@@ -1338,7 +1358,7 @@ function renderSelectedCompetitorViews(){
   };
   const incSets=[lineDs('All Average',incSeries(compState.allHourAvg),'#000000',4)];
   selected.forEach((s,i)=>incSets.push(lineDs(s,incSeries(compState.hourCumAvgByStore[s]),compColor(i),3)));
-  draw('selectedStoreHourIncChart','line',hourLabels,incSets,true,{yTitle:'시간대 방문자 평균'});
+  draw('selectedStoreHourIncChart','line',hourLabels,incSets,true,{yTitle:'시간대 방문자 평균',datalabels:{display:(ctx)=>ctx.dataset.data[ctx.dataIndex]!==null,anchor:'end',align:'top',offset:2,formatter:v=>Number(v).toLocaleString(),font:{weight:'700',size:9},color:'#202124'}});
 
   let hHtml='<tr><th>시간</th><th>평균</th><th>전체</th>'+selected.map(s=>`<th>${storeCleanName(s)}</th>`).join('')+'</tr>';
   hourLabels.forEach((lab,h)=>{
@@ -1365,7 +1385,7 @@ function renderSelectedCompetitorViews(){
     daySets.push(lineDs(s,validIdx.map(idx=>arrAt(compState.dailyByStore,s,idx)),compColor(i),3));
   });
 
-  draw('selectedStoreDailyChart','line',dayLabels,daySets,true,{yTitle:'일별 방문자',xLabelFull:true});
+  draw('selectedStoreDailyChart','line',dayLabels,daySets,true,{yTitle:'일별 방문자',xLabelFull:true,datalabels:{display:(ctx)=>ctx.dataset.data[ctx.dataIndex]!==null,anchor:'end',align:'top',offset:2,formatter:v=>Number(v).toLocaleString(),font:{weight:'700',size:9},color:'#202124'}});
 
   let dHtml='<tr><th>날짜</th><th>평균</th><th>전체</th>'+selected.map(s=>`<th>${storeCleanName(s)}</th>`).join('')+'</tr>';
   validIdx.forEach(i=>{
@@ -1440,10 +1460,14 @@ function renderCompetitor(start,end){
     };
   }).sort((a,b)=>b.avg-a.avg);
 
+  const compare=getComparePeriodSafe(start,end);
+  const prevByStore={};
+  buildVisit(compare.start,compare.end,[]).dailyRows.forEach(r=>{if(!prevByStore[r.store])prevByStore[r.store]={visit:0,days:0};prevByStore[r.store].visit+=r.visit;prevByStore[r.store].days++;});
   const topVisit=rows.slice(0,15);
   draw('compVisitChart','bar',topVisit.map(r=>r.store),[
-    {label:'일평균 방문자',data:topVisit.map(r=>Math.round(r.avg)),backgroundColor:'#c1121f'}
-  ],false,{
+    {label:'선택기간 일평균 방문자',data:topVisit.map(r=>Math.round(r.avg)),backgroundColor:'#c1121f'},
+    {label:compare.label+' 일평균 방문자',data:topVisit.map(r=>{const p=prevByStore[r.raw];return p&&p.days?Math.round(p.visit/p.days):0;}),backgroundColor:'rgba(0,59,143,.65)'}
+  ],true,{
     xLabelFull:true,
     datalabels:{
       display:true,anchor:'end',align:'top',offset:2,
@@ -1566,7 +1590,7 @@ function renderHistory(dates,dailyVisits,dailyOrders,dailyRev,visit,sales){
       display:true,
       anchor:'end',
       align:'top',
-      formatter:v=>Number(v).toFixed(1)+'%',
+      formatter:(v,ctx)=>ctx.dataset.label==='전환율(%)'?Number(v).toFixed(1)+'%':Number(v).toLocaleString(),
       font:{weight:'700',size:10},
       color:'#202124'
     }
@@ -1849,20 +1873,17 @@ function renderCustomer(sales){
   renderCustomerDistributions(sales);
   const candidates=['구매자명','구매자ID','구매자 아이디','수취인명','수령인','주문자명'];
   const keyCol=candidates.find(c=>sales.lineRows.some(r=>String(r[c]||'').trim()));
-  if(!keyCol){setSimpleTable('customerTable',['안내'],[['판매DB_KMA에 구매자명/구매자ID/수취인명 계열 컬럼이 있으면 충성고객 분석을 표시할 수 있습니다.']]);return;}
+  if(!keyCol){setSimpleTable('customerTypeSummaryTable',['안내'],[['판매DB_KMA에 구매자명/구매자ID/수취인명 계열 컬럼이 있으면 개인/사업자 추정표를 표시할 수 있습니다.']]);setSimpleTable('customerTable',['안내'],[['판매DB_KMA에 구매자명/구매자ID/수취인명 계열 컬럼이 있으면 고객 분석을 표시할 수 있습니다.']]);return;}
   const by={};
-  sales.lineRows.forEach(r=>{
-    const k=String(r[keyCol]||'').trim();if(!k)return;
-    if(!by[k])by[k]={name:k,orders:new Set(),rev:0,last:''};
-    by[k].orders.add(String(r['주문번호']||r['상품주문번호']||''));
-    by[k].rev+=r.amt;
-    if(!by[k].last||r.ds>by[k].last)by[k].last=r.ds;
-  });
-  const rows=Object.values(by).sort((a,b)=>{
-    if(customerSortMode==='revenue')return b.rev-a.rev || b.orders.size-a.orders.size;
-    return b.orders.size-a.orders.size || b.rev-a.rev;
-  }).slice(0,30);
-  setSimpleTable('customerTable',['고객','주문횟수','총구매금액','최근구매일','분류'],rows.map(r=>[r.name,r.orders.size,money(r.rev),r.last,r.orders.size>=2?'충성고객 후보':'일회성/대량 후보']));
+  sales.lineRows.forEach(r=>{const k=String(r[keyCol]||'').trim();if(!k)return;if(!by[k])by[k]={name:k,orders:new Set(),rev:0,last:'',rows:[]};by[k].orders.add(String(r['주문번호']||r['상품주문번호']||''));by[k].rev+=r.amt;by[k].rows.push(r);if(!by[k].last||r.ds>by[k].last)by[k].last=r.ds;});
+  const allRows=Object.values(by).map(r=>{const cls=classifyCustomerRows(r.rows);return {...r,type:cls.type,reason:cls.reason,maskedInfo:cls.masked};}).sort((a,b)=>customerSortMode==='revenue'?(b.rev-a.rev||b.orders.size-a.orders.size):(b.orders.size-a.orders.size||b.rev-a.rev));
+  const summary={personal:{cnt:0,orders:0,rev:0},business:{cnt:0,orders:0,rev:0}};
+  allRows.forEach(r=>{const bucket=r.type==='사업자 추정'?summary.business:summary.personal;bucket.cnt++;bucket.orders+=r.orders.size;bucket.rev+=r.rev;});
+  const totalRev=summary.personal.rev+summary.business.rev;
+  setSimpleTable('customerTypeSummaryTable',['구분','고객수','주문건수','매출','매출비중'],[['개인 추정',summary.personal.cnt,summary.personal.orders,money(summary.personal.rev),totalRev?(summary.personal.rev/totalRev*100).toFixed(1)+'%':'-'],['사업자 추정',summary.business.cnt,summary.business.orders,money(summary.business.rev),totalRev?(summary.business.rev/totalRev*100).toFixed(1)+'%':'-'],['Total',summary.personal.cnt+summary.business.cnt,summary.personal.orders+summary.business.orders,money(totalRev),'100.0%']]);
+  const tableRows=allRows.map(r=>[maskName(r.name),r.type,r.reason,r.maskedInfo,r.orders.size,money(r.rev),r.last,r.orders.size>=2?'충성고객 후보':'일회성/대량 후보']);
+  tableRows.push(['Total','-','-','-',allRows.reduce((a,r)=>a+r.orders.size,0),money(allRows.reduce((a,r)=>a+r.rev,0)),'-','-']);
+  setSimpleTable('customerTable',['고객명(마스킹)','개인/사업자','판별기준','마스킹 근거','주문횟수','총구매금액','최근구매일','분류'],tableRows);
 }
 function draw(id,type,labels,datasets,legend=false,extraOptions={}){
   if(charts[id])charts[id].destroy();
