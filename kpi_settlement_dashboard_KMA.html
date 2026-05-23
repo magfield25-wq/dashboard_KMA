@@ -104,7 +104,7 @@ table{width:100%;border-collapse:collapse;font-size:12px;} th,td{padding:9px 8px
 </style>
 </head>
 <body>
-<div class="header"><div class="header-inner"><div><h1>KMA 출고·정산 KPI 대시보드</h1><p>KMA 전용 · 발송일 기준 · 매출수익 · 쇼핑몰수수료 · 상품원가 · 내부출고비 · 광고비 · 순이익 분석</p></div><div class="header-actions"><a class="home-btn" href="index_KMA.html">홈</a><img class="header-logo" src="logo.png" alt="KMA"><div class="hint" id="headerRange">-</div></div></div></div>
+<div class="header"><div class="header-inner"><div><h1>KMA 출고·정산 KPI 대시보드</h1><p>KMA 전용 · 발송일 기준 · 매출수익 · 쇼핑몰수수료 · 상품원가 · 내부출고비 · 광고비 · 순이익 분석</p></div><div class="header-actions"><a class="home-btn" href="index.html">홈</a><img class="header-logo" src="logo.png" alt="KMA"><div class="hint" id="headerRange">-</div></div></div></div>
 <div class="container">
   <div class="filter-box">
     <div class="fi"><label>시작일</label><input type="date" id="start"></div>
@@ -209,7 +209,6 @@ table{width:100%;border-collapse:collapse;font-size:12px;} th,td{padding:9px 8px
     <div class="table-box"><div class="box-head"><div class="chart-title">선택기간 일자별 광고비 자동배분</div><div class="hint">선택 기간/쇼핑몰 기준으로 KPI 계산에 반영된 금액</div></div><div class="table-wrap"><table id="adTable"></table></div></div>
   </div>
   <div id="franchisePanel" class="panel">
-    <div class="notice-box">방문추이 STORES/RAW의 회사명이 <b>A.</b> 또는 <b>B.</b>로 시작하는 회사만 표시하고, 판매DB는 접두어를 제거한 쇼핑몰명으로 매칭합니다. 상단 날짜/도매상/거래구분 조건은 유지합니다.</div>
     <div class="table-box"><div class="box-head"><div class="chart-title">회사 선택</div><div class="hint">체크한 회사만 그래프/테이블에 표시</div></div><div id="franchiseKpiChecks" class="franchise-checks"></div></div>
     <div class="row2">
       <div class="chart-box"><div class="box-head"><div class="chart-title">회사별 매출수익</div><div class="hint">선택기간 vs 전동기</div></div><div class="chart lg"><canvas id="frKpiRevenueChart"></canvas></div></div>
@@ -230,9 +229,66 @@ const SHEET_SALES = '1MZF9FQRS2Ej2B4kpVNLtjtaB95VDR_t5qtYFeuDzWQ0';
 const SHEET_MASTER = 'MASTER';
 const SHEET_PRICE_MAP = '단가_매핑';
 const SHEET_AD = '광고비설정';
-const AD_SETTING_APP_URL = 'https://script.google.com/macros/s/AKfycbzNZrBoTta79eBRhQhj0jy_TbQdsPf4dtl7pStWZxM84J_L3q0AsnhyQHyFnhxt7pMMlw/exec?p=adCost';
+const AD_SETTING_APP_URL = 'https://script.google.com/macros/s/AKfycbzNZrBoTta79eBRhQhj0jy_TbQdsPf4dtl7pStWZxM84J_L3q0AsnhyQHyFnhxt7pMMlw/exec?p=adCost'; // Apps Script 웹앱 URL을 여기에 넣으면 광고비 탭 버튼에서 열립니다.
 const VAT_RATE = 0.10;
 const DEFAULT_MALL = 'KMA';
+
+
+// KMA access/version gate
+const KMA_AUTH_KEY = 'kma_dashboard_login';
+const KMA_APP_CODE = 'KMA_20260522_A';
+const KMA_SETTING_SHEET_ID = '1MZF9FQRS2Ej2B4kpVNLtjtaB95VDR_t5qtYFeuDzWQ0';
+const KMA_SETTING_SHEET_NAME = '설정';
+function kmaRedirectLogin(){ window.location.href='index.html'; }
+function kmaGvizJsonpNoHeader(baseUrl){
+  return new Promise((resolve,reject)=>{
+    const cb='__kma_ver_cb_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+    const script=document.createElement('script');
+    let done=false;
+    const timer=setTimeout(()=>{ if(done)return; cleanup(); reject(new Error('버전확인 응답시간 초과')); },15000);
+    function cleanup(){ done=true; clearTimeout(timer); try{delete window[cb];}catch(e){window[cb]=undefined;} if(script.parentNode)script.parentNode.removeChild(script); }
+    window[cb]=function(j){ cleanup(); resolve(j); };
+    script.onerror=function(){ cleanup(); reject(new Error('버전확인 로드 실패')); };
+    const sep=baseUrl.includes('?')?'&':'?';
+    script.src=baseUrl+sep+'tqx='+encodeURIComponent('out:json;responseHandler:'+cb)+'&headers=0&rand='+Date.now();
+    document.head.appendChild(script);
+  });
+}
+function kmaCellValue(cell){ if(!cell)return ''; if(cell.f!==undefined && cell.f!==null && cell.f!=='')return String(cell.f).trim(); if(cell.v!==undefined && cell.v!==null)return String(cell.v).trim(); return ''; }
+async function kmaReadRemoteAppCode(){
+  const url=`https://docs.google.com/spreadsheets/d/${KMA_SETTING_SHEET_ID}/gviz/tq?sheet=${encodeURIComponent(KMA_SETTING_SHEET_NAME)}`;
+  const j=await kmaGvizJsonpNoHeader(url);
+  if(!j || j.status==='error') throw new Error('APP_CODE 설정 시트 로드 실패');
+  const rows=(j.table&&j.table.rows)||[];
+  for(const row of rows){
+    const cells=row.c||[];
+    for(let i=0;i<cells.length;i++){
+      const key=kmaCellValue(cells[i]).replace(/ /g,' ').trim();
+      if(key==='APP_CODE'){
+        const v=kmaCellValue(cells[i+1]);
+        if(v)return v;
+      }
+    }
+  }
+  throw new Error('APP_CODE 값을 찾지 못했습니다. 설정 시트 A1=APP_CODE, B1=현재코드 확인');
+}
+async function kmaRequireAccessThenLoad(){
+  if(sessionStorage.getItem(KMA_AUTH_KEY)!=='ok'){ kmaRedirectLogin(); return; }
+  try{
+    const remoteCode=await kmaReadRemoteAppCode();
+    if(remoteCode!==KMA_APP_CODE){
+      sessionStorage.removeItem(KMA_AUTH_KEY);
+      document.getElementById('status').textContent='대시보드 버전이 만료되었습니다. 최신 주소로 다시 접속하세요.';
+      setTimeout(kmaRedirectLogin,1200);
+      return;
+    }
+    loadData();
+  }catch(e){
+    document.getElementById('status').textContent='버전 확인 오류: '+e.message;
+    console.error(e);
+  }
+}
+
 function normMallName(v){return String(v||'').replace(/\u00A0/g,' ').trim();}
 function mallLabel(v){const s=normMallName(v); return s||'전체';}
 function escHtml(v){return String(v||'').replace(/[&<>\"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[m]));}
@@ -467,7 +523,7 @@ function buildData(start,end,sel,includeAds=true){
 }
 function aggRow(k,o,extra=[]){const rate=o.sales?o.profit/o.sales:0;const netRate=o.sales?(o.profit-(o.ad||0))/o.sales:0;const income=(o.sales||0)+(o.shipRev||0);return [k,...extra,o.orders.size,Math.round(o.qty),Math.round(o.sales),Math.round(o.shipRev),Math.round(income),Math.round(o.settle),Math.round(o.fee||0),Math.round(o.cost),Math.round(o.shipCost),Math.round(o.ad||0),Math.round(o.profit),pct(rate,1),Math.round(o.profit-(o.ad||0)),pct(netRate,1)];}
 function fillSelects(){const mallSel=document.getElementById('mall'),wholeSel=document.getElementById('whole');const malls=[...new Set(rawSales.map(r=>normMallName(r['쇼핑몰'])).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));const wholes=[...new Set(rawSales.map(r=>String(r['도매상']||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));mallSel.innerHTML='<option value="all">전체</option>'+malls.map(v=>`<option value="${escHtml(v)}">${escHtml(v)}</option>`).join('');mallSel.value=malls.includes(DEFAULT_MALL)?DEFAULT_MALL:'all';wholeSel.innerHTML='<option value="all">전체</option>'+wholes.map(v=>`<option value="${escHtml(v)}">${escHtml(v)}</option>`).join('');}
-async function loadData(){setThisMonth();document.getElementById('status').textContent='데이터 로딩 중...';try{const [salesRows,priceRows,visitRows]=await Promise.all([fetchSheet(SHEET_SALES,SHEET_MASTER),fetchSheet(SHEET_SALES,SHEET_PRICE_MAP,true),fetchSheet(SHEET_VISIT,'raw',true)]);rawSales=salesRows;rawPriceMap=priceRows||[];rawVisit=visitRows||[];try{rawAds=await fetchSheet(SHEET_SALES,SHEET_AD,true);adSheetOk=true;}catch(e){rawAds=[];adSheetOk=false;}fillSelects();const malls=[...new Set(rawSales.map(r=>normMallName(r['쇼핑몰'])).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));const trades=[...new Set(rawSales.map(r=>String(r['거래구분']||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));const frStores=franchiseVisitStores();document.getElementById('status').textContent=`연결 완료: 판매DB_KMA MASTER ${rawSales.length.toLocaleString()}행 / 방문RAW ${rawVisit.length.toLocaleString()}행 / 프랜차이즈 ${frStores.length.toLocaleString()}개 / 단가매핑 ${rawPriceMap.length.toLocaleString()}행 / 광고비설정 ${adSheetOk?rawAds.length.toLocaleString()+'행':'시트 없음 또는 미공개'}`;refresh();}catch(e){document.getElementById('status').textContent='오류: '+e.message;console.error(e);}}
+async function loadData(){setThisMonth();document.getElementById('status').textContent='데이터 로딩 중...';try{const [salesRows,priceRows,visitRows]=await Promise.all([fetchSheet(SHEET_SALES,SHEET_MASTER),fetchSheet(SHEET_SALES,SHEET_PRICE_MAP,true),fetchSheet(SHEET_VISIT,'raw',true)]);rawSales=salesRows;rawPriceMap=priceRows||[];rawVisit=visitRows||[];try{rawAds=await fetchSheet(SHEET_SALES,SHEET_AD,true);adSheetOk=true;}catch(e){rawAds=[];adSheetOk=false;}fillSelects();const malls=[...new Set(rawSales.map(r=>normMallName(r['쇼핑몰'])).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));const trades=[...new Set(rawSales.map(r=>String(r['거래구분']||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));const frStores=franchiseVisitStores();document.getElementById('status').textContent=`연결 완료: MASTER ${rawSales.length.toLocaleString()}행 / 방문RAW ${rawVisit.length.toLocaleString()}행 / 프랜차이즈 ${frStores.length.toLocaleString()}개 / 단가매핑 ${rawPriceMap.length.toLocaleString()}행 / 광고비설정 ${adSheetOk?rawAds.length.toLocaleString()+'행':'시트 없음 또는 미공개'}`;refresh();}catch(e){document.getElementById('status').textContent='오류: '+e.message;console.error(e);}}
 function sumMapAd(map){return Object.values(map||{}).reduce((s,o)=>s+(o.ad||0),0);}
 function sumMapNet(map){return Object.values(map||{}).reduce((s,o)=>s+((o.profit||0)-(o.ad||0)),0);}
 function nearSame(a,b){return Math.abs((Number(a)||0)-(Number(b)||0))<1;}
@@ -1022,93 +1078,7 @@ function renderFranchiseKpi(start,end,sel){
 }
 
 function switchTab(name,el){document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));el.classList.add('active');document.getElementById(name).classList.add('active');}
-
-/* KMA version/login gate */
-const KMA_CLIENT_APP_CODE = 'KMA_20260522_A';
-const KMA_SETTING_SHEET_ID = '1MZF9FQRS2Ej2B4kpVNLtjtaB95VDR_t5qtYFeuDzWQ0';
-const KMA_SETTING_SHEET_NAME = '설정';
-const KMA_INDEX_PAGE = 'index_KMA.html';
-function kmaGetStorage(key){
-  try{return sessionStorage.getItem(key) || localStorage.getItem(key) || '';}catch(e){return '';}
-}
-function kmaSetStorage(key,val){
-  try{sessionStorage.setItem(key,val);}catch(e){}
-  try{localStorage.setItem(key,val);}catch(e){}
-}
-function kmaGvizJsonpNoHeader(url){
-  return new Promise((resolve,reject)=>{
-    const cb='__kma_ver_cb_'+Date.now()+'_'+Math.random().toString(36).slice(2);
-    const script=document.createElement('script');
-    let done=false;
-    const timer=setTimeout(()=>{if(done)return;cleanup();reject(new Error('버전 확인 시간 초과'));},15000);
-    function cleanup(){done=true;clearTimeout(timer);try{delete window[cb];}catch(e){window[cb]=undefined;}if(script.parentNode)script.parentNode.removeChild(script);}
-    window[cb]=function(j){cleanup();resolve(j);};
-    script.onerror=function(){cleanup();reject(new Error('버전 확인 로드 실패'));};
-    const sep=url.includes('?')?'&':'?';
-    script.src=url+sep+'tqx='+encodeURIComponent('out:json;responseHandler:'+cb)+'&headers=0&rand='+Date.now();
-    document.head.appendChild(script);
-  });
-}
-function kmaExtractAppCode(j){
-  const rows=(j && j.table && j.table.rows) ? j.table.rows : [];
-  for(const row of rows){
-    const cells=row.c || [];
-    const a=String((cells[0] && (cells[0].f ?? cells[0].v)) ?? '').trim();
-    const b=String((cells[1] && (cells[1].f ?? cells[1].v)) ?? '').trim();
-    if(a.replace(/\s+/g,'').toUpperCase()==='APP_CODE') return b;
-  }
-  const cols=(j && j.table && j.table.cols) ? j.table.cols : [];
-  for(let i=0;i<cols.length;i++){
-    const label=String(cols[i].label||cols[i].id||'').trim().replace(/\s+/g,'').toUpperCase();
-    if(label==='APP_CODE'){
-      for(const row of rows){
-        const cell=(row.c||[])[i];
-        const v=String((cell && (cell.f ?? cell.v)) ?? '').trim();
-        if(v) return v;
-      }
-    }
-  }
-  return '';
-}
-async function kmaFetchServerAppCode(){
-  const url=`https://docs.google.com/spreadsheets/d/${KMA_SETTING_SHEET_ID}/gviz/tq?sheet=${encodeURIComponent(KMA_SETTING_SHEET_NAME)}`;
-  const j=await kmaGvizJsonpNoHeader(url);
-  if(j && j.status==='error') throw new Error('설정 시트 로드 실패');
-  const code=kmaExtractAppCode(j);
-  if(!code) throw new Error('설정 시트 APP_CODE 없음');
-  return code;
-}
-async function kmaRequireDashboardAccess(){
-  if(kmaGetStorage('KMA_DASHBOARD_AUTH')!=='OK'){
-    alert('로그인이 필요합니다. 메인 화면에서 다시 접속하세요.');
-    location.replace(KMA_INDEX_PAGE);
-    return false;
-  }
-  if(kmaGetStorage('KMA_APP_CODE') !== KMA_CLIENT_APP_CODE){
-    alert('대시보드 버전이 다릅니다. 메인 화면에서 다시 접속하세요.');
-    location.replace(KMA_INDEX_PAGE);
-    return false;
-  }
-  try{
-    const serverCode=await kmaFetchServerAppCode();
-    if(serverCode !== KMA_CLIENT_APP_CODE){
-      alert('대시보드 버전이 만료되었습니다. 최신 화면으로 다시 접속하세요.');
-      try{sessionStorage.removeItem('KMA_DASHBOARD_AUTH');localStorage.removeItem('KMA_DASHBOARD_AUTH');}catch(e){}
-      location.replace(KMA_INDEX_PAGE);
-      return false;
-    }
-    return true;
-  }catch(e){
-    alert('버전 확인 실패: '+e.message);
-    location.replace(KMA_INDEX_PAGE);
-    return false;
-  }
-}
-async function kmaBootDashboard(){
-  const ok=await kmaRequireDashboardAccess();
-  if(ok) loadData();
-}
-kmaBootDashboard();
+kmaRequireAccessThenLoad();
 </script>
 </body>
 </html>
